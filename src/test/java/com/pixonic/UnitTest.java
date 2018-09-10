@@ -1,5 +1,6 @@
 package com.pixonic;
 
+import org.testng.Assert;
 import org.testng.annotations.Ignore;
 import org.testng.annotations.Test;
 import org.testng.log4testng.Logger;
@@ -31,23 +32,23 @@ public final class UnitTest {
 
     @Test(threadPoolSize = 1, expectedExceptions = SchedulingException.class)
     void nullActionScheduleTest() throws SchedulingException {
-        log.info("test thread started");
+        log.info("nullActionScheduleTest thread started");
         LocalDateTime scheduleTime = LocalDateTime.now(ZoneOffset.UTC).plusNanos(random.nextInt(maxDelayNano));
         actionScheduler.schedule(scheduleTime, null);
-        log.info("test thread finished");
+        log.info("nullActionScheduleTest thread finished");
     }
 
     @Test(threadPoolSize = 1, expectedExceptions = SchedulingException.class)
     void nullTimeScheduleTest() throws SchedulingException {
-        log.info("test thread started");
-        TestAction testAction = new TestAction(null, 0, null);
+        log.info("nullTimeScheduleTest thread started");
+        TestAction testAction = new CountDownTestAction(null, 0, null);
         actionScheduler.schedule(null, testAction);
-        log.info("test thread finished");
+        log.info("nullTimeScheduleTest thread finished");
     }
 
     @Test(threadPoolSize = 1, expectedExceptions = SchedulingException.class)
     void farAwayTimeScheduleTest() throws InterruptedException, SchedulingException {
-        log.info("test thread started");
+        log.info("farAwayTimeScheduleTest thread started");
 
         LocalDateTime scheduleTime = LocalDateTime
                 .now(ZoneOffset.UTC)
@@ -57,13 +58,36 @@ public final class UnitTest {
         int runningTime = random.nextInt(maxExecutionTimeMs);
 
         CountDownLatch latch = new CountDownLatch(1);
-        TestAction testAction = new TestAction(scheduleTime, runningTime, latch);
+        TestAction testAction = new CountDownTestAction(scheduleTime, runningTime, latch);
 
         log.info("Scheduling far away action at " + scheduleTime);
         actionScheduler.schedule(scheduleTime, testAction);
         latch.await();
 
-        log.info("test thread finished");
+        log.info("farAwayTimeScheduleTest thread finished");
+    }
+
+    @Test(threadPoolSize = 1)
+    void keepOrderScheduleTest() throws InterruptedException, SchedulingException {
+        log.info("keepOrderScheduleTest thread started");
+
+        CountDownLatch latch = new CountDownLatch(OrderedTestAction.maxResultsCount);
+
+        for (int i = 0; i < OrderedTestAction.maxResultsCount; i++) {
+            LocalDateTime scheduleTime = LocalDateTime.now(ZoneOffset.UTC);
+
+            int runningTime = random.nextInt(maxExecutionTimeMs);
+            OrderedTestAction testAction = new OrderedTestAction(scheduleTime, runningTime, i, latch);
+
+            actionScheduler.schedule(testAction.callTime, testAction);
+        }
+        latch.await();
+        for (int i = 0; i < OrderedTestAction.maxResultsCount; i++) {
+            Integer callResult = OrderedTestAction.callResults.take();
+            Assert.assertEquals(callResult.intValue(), i);
+        }
+
+        log.info("keepOrderScheduleTest thread finished");
     }
 
     // Тест работает очень долго
@@ -71,9 +95,9 @@ public final class UnitTest {
     @Ignore
     @Test(threadPoolSize = 4, invocationCount = 8)
     void highLoadScheduleTest() throws InterruptedException, SchedulingException {
-        log.info("test thread started");
+        log.info("highLoadScheduleTest thread started");
         scheduleActions(100000);
-        log.info("test thread finished");
+        log.info("highLoadScheduleTest thread finished");
     }
 
     private void scheduleActions(int numberOfActionsPerThread) throws SchedulingException, InterruptedException {
@@ -83,9 +107,9 @@ public final class UnitTest {
             LocalDateTime scheduleTime = LocalDateTime.now(ZoneOffset.UTC).plusNanos(random.nextInt(maxDelayNano));
 
             int runningTime = random.nextInt(maxExecutionTimeMs);
-            TestAction testAction = new TestAction(scheduleTime, runningTime, latch);
+            TestAction testAction = new CountDownTestAction(scheduleTime, runningTime, latch);
 
-            actionScheduler.schedule(testAction.callTime, testAction);
+            actionScheduler.schedule(scheduleTime, testAction);
         }
         latch.await();
     }
